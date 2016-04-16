@@ -1,0 +1,64 @@
+#!/usr/bin/env ruby
+# encoding: utf-8
+
+require 'erb'
+require 'fileutils'
+
+STATDS_CONFIG_PATH = ARGV[1] || 'https://gist.githubusercontent.com/knomedia/47fea4894a397efb61b2ac8a5abc2a05/raw/4e95d058aedcdfa7dc5ac7c46c91cbecaa9a91f5/config.js'.freeze
+
+
+USAGE = <<USG
+usage:
+
+dsgs <dir> [config_url]
+
+<dir> is the name of a directory that will be created in your home folder
+and updated with a statsd config file, and then used as a local volume for the
+docker container that you spin up.
+
+[config_url] optional url to a statsd config file to use
+
+USG
+
+TEMPLATE = <<EOF
+VIRTUAL_HOST=graphite.docker docker run -d\
+  --name graphite\\
+  -p 81:80\\
+  -p 2003:2003\\
+  -p 8125:8125/udp\\
+  -v ~/<%= path %>/graphite/configs:/opt/graphite/conf\\
+  -v ~/<%= path %>/graphite/data:/opt/graphite/storage\\
+  -v ~/<%= path %>/statsd:/opt/statsd\\
+  hopsoft/graphite-statsd
+EOF
+
+def build_local_volumes location
+  puts 'building local volumes...'
+  paths = %w{statsd graphite/configs graphite/data}
+  location = "~/#{location}"
+  paths.each do |p|
+    full_path = "#{location}/#{p}"
+    `mkdir -p #{full_path}`
+  end
+end
+
+def pull_statsd_config location
+  puts 'copying default config...'
+  `curl #{STATDS_CONFIG_PATH} > #{location}`
+end
+
+def path_or_die l
+  if !l
+    puts USAGE
+    exit 1
+  end
+end
+
+path = ARGV[0]
+path_or_die path
+build_local_volumes path
+pull_statsd_config "~/#{path}/statsd/config.js"
+
+renderer = ERB.new(TEMPLATE)
+puts "\ncopy and paste the following to start local graphite and statsd:\n\n"
+puts renderer.result()
